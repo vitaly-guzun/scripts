@@ -11,6 +11,7 @@
 
 # HOW TO USE:
 # It must be set the env variable $REPOS to the base directory of the repositories.
+source ~/.zshrc
 
 # --- Get Pull Request URL from clipboard ---
 PR_URL=$(pbpaste)
