@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# Raycast Script: Open Pull Request in Text Editor
+# @raycast.schemaVersion 1
+# @raycast.title Github to Editor
+# @raycast.mode fullOutput
+# @raycast.icon 🔬
+
+# This script is a workaround to open the pull request in the editor.
+# The script is used to open the pull request in the editor.
+
+# HOW TO USE:
+# It must be set the env variable $REPOS to the base directory of the repositories.
+
+# --- Get Pull Request URL from clipboard ---
+PR_URL=$(pbpaste)
+
+# --- Extract repository name from the URL ---
+# Example URL: https://github.com/org/repo/pull/12345
+REPO_NAME=$(echo "$PR_URL" | awk -F/ '{print $5}')
+
+# --- Navigate to the local repository directory ---
+cd "$REPOS/$REPO_NAME" || { echo "Repository not found"; exit 1; }
+
+# --- Extract PR number from the URL ---
+PR_NUMBER=$(echo "$PR_URL" | awk -F/ '{print $7}')
+
+# --- Retrieve the source branch name for this PR ---
+PR_BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName')
+
+# --- Extract the next URL segment (either 'files' or 'commits') ---
+URL_SEGMENT=$(echo "$PR_URL" | awk -F/ '{print $8}')
+
+# --- Check out the PR locally ---
+gh pr checkout "$PR_NUMBER"
+
+# --- Prepare an array to hold the list of changed files ---
+changed_files=()
+
+if [ "$URL_SEGMENT" = "commits" ]; then
+  # --- User is viewing a specific commit in the PR ---
+  # Extract commit SHA from the URL (after /commits/)
+  COMMIT_SHA=$(echo "$PR_URL" | awk -F/ '{print $9}' | awk -F# '{print $1}')
+
+  # Find the base commit (common ancestor with master)
+  BASE_COMMIT_SHA=$(git merge-base master "$PR_BRANCH")
+
+  # Check out the specific commit
+  git checkout "$COMMIT_SHA"
+
+  # Get changed files between base and this commit, filter out files not in the repo anymore
+  while IFS= read -r file; do
+    changed_files+=("$file")
+  done < <(git diff --name-only "$BASE_COMMIT_SHA".."$COMMIT_SHA" | xargs -I{} git ls-files --error-unmatch {} 2>/dev/null)
+else
+# --- Default: show files changed in the whole PR ---
+  while IFS= read -r file; do
+    changed_files+=("$file")
+  done < <(gh pr diff "$PR_NUMBER" --name-only | xargs -I{} git ls-files --error-unmatch {} 2>/dev/null)
+fi
+
+# --- Open files in the Cursor editor ---
+# Open the project root
+cursor .
+
+# Open all changed files
+cursor "${changed_files[@]}"
